@@ -28,7 +28,7 @@ URDF_PATH = os.path.join(
     get_package_share_directory("daadbot_desc"),
     "urdf",
     "urdf_inverted_torque",
-    "daadbot_noisy_.urdf"
+    "daadbot.urdf"
 )
 
 EE_NAMES = ["gear1_claw", "gear2_claw"]
@@ -40,7 +40,7 @@ class Gazebo7DOFConformalNode(Node):
         super().__init__('gazebo_cr_7dof_node')
         
         # --- 1. CONFORMAL PARAMETERS ---
-        self.q_quantile = 28.6  # From your 7-DOF calibration
+        self.q_quantile = 0.0  # From your 7-DOF calibration
         
         # --- 2. CONTROLLER SETUP ---
         self.robot = RobotDynamics(URDF_PATH, EE_NAMES, ALL_JOINTS, noise_level=0.0)
@@ -52,8 +52,8 @@ class Gazebo7DOFConformalNode(Node):
             center=[0.0, 0.0, 0.72], 
             lengths=[0.3, 0.24, 0.4], 
             power_n=4,      
-            k_pos=87.0,     
-            k_vel=60.0      
+            k_pos=36.0,     
+            k_vel=21.0      
         )
         self.cbf_active = False 
 
@@ -139,6 +139,7 @@ class Gazebo7DOFConformalNode(Node):
         # G. FINAL TORQUE CALCULATION
         if feasible:
             acc_cmd = u_ref + mu 
+            #acc_cmd = u_ref + 0.0
             tau_cmd = (M @ J_pinv @ (acc_cmd - (dJ @ self.dq))) + nle
         else:
             # Fallback: Safe braking
