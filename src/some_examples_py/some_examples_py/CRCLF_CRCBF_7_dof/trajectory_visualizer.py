@@ -8,18 +8,23 @@ class TrajectoryVisualizer(Node):
     def __init__(self):
         super().__init__('trajectory_visualizer')
         self.publisher_ = self.create_publisher(Marker, '/trajectory_marker', 10)
-        self.timer = self.create_timer(1.0, self.publish_marker) # Publish once per second
+        self.timer = self.create_timer(1.0, self.publish_marker) # Publish 1 Hz
         
-        # Ellipse Parameters (Must match your TrajectoryGenerator)
-        self.center_z = 0.72
-        self.a = 0.15
-        self.b = 0.36
+        # --- ELLIPSE PARAMETERS (Matched to your TrajectoryGenerator) ---
+        self.center_x = 0.0
+        self.center_y = 0.0
+        self.center_z = 0.0  # Planar robot is at z=0
         
-        self.get_logger().info("Trajectory Visualizer Node Started")
+        self.a = 1.6  # Radius on X
+        self.b = 0.9  # Radius on Y
+        
+        self.get_logger().info("Trajectory Visualizer Node Started (1.6m x 0.9m)")
 
     def publish_marker(self):
         marker = Marker()
-        marker.header.frame_id = "world" # Or "base_link" if your robot is fixed
+        # "world" is usually the fixed frame for Gazebo/Pinocchio. 
+        # If your marker doesn't appear, try changing this to "base" or "base_link"
+        marker.header.frame_id = "world" 
         marker.header.stamp = self.get_clock().now().to_msg()
         
         # ID and Type
@@ -29,23 +34,22 @@ class TrajectoryVisualizer(Node):
         marker.action = Marker.ADD
         
         # Scale (Line Width)
-        marker.scale.x = 0.005 # 5mm thick line
+        marker.scale.x = 0.01 # 1cm thick line for better visibility
         
-        # Color (Red, fully opaque)
-        marker.color.r = 1.0
-        marker.color.g = 0.0
+        # Color (Green, fully opaque)
+        marker.color.r = 0.0
+        marker.color.g = 1.0
         marker.color.b = 0.0
         marker.color.a = 1.0
         
         # Geometry: Draw the Ellipse
-        # We create 100 points to make a smooth loop
-        steps = 100
+        steps = 200 # More steps for a smoother large ellipse
         for i in range(steps + 1):
             theta = 2.0 * math.pi * i / steps
             
-            # Parametric Ellipse Equations
-            x = self.a * math.cos(theta)
-            y = self.b * math.sin(theta)
+            # Parametric Ellipse Equations (x = cx + a*cos(t), y = cy + b*sin(t))
+            x = self.center_x + self.a * math.cos(theta)
+            y = self.center_y + self.b * math.sin(theta)
             z = self.center_z
             
             p = Point()

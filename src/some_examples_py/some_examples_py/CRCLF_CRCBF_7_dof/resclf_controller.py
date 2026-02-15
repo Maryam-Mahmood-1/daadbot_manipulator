@@ -27,9 +27,12 @@ class RESCLF_Controller:
         # 2. Optimal Control Weights (LQR)
         q_pos = 1000.0
         q_vel = 500.0
-        
-        self.Q_mat = np.diag([q_pos, q_pos, q_pos, q_vel, q_vel, q_vel])
-        R_mat = np.eye(dim_task) * 0.00001
+        # --- FIX: DYNAMIC Q MATRIX CONSTRUCTION ---
+        q_diagonal = [q_pos] * dim_task + [q_vel] * dim_task
+
+        self.Q_mat = np.diag(q_diagonal) # This creates a 4x4 matrix correctly.
+
+        R_mat = np.eye(dim_task) * 0.00001 # This creates a 2x2 matrix correctly.
         
         self.P = solve_continuous_are(self.F, self.G, self.Q_mat, R_mat)
         
@@ -79,6 +82,7 @@ class RESCLF_Controller:
         # We return the cost separately so the QP setup can subtract it from 'b'
         # b_clf = -gamma*V - LfV - robustness_cost
         print("Robustness cost in CLF:", robustness_cost)
+        print("quantile in CLF:", q_quantile)
         print("Gradient V in CLF:", grad_V_actuated)
         
         return LfV, LgV, V, self.gamma, robustness_cost

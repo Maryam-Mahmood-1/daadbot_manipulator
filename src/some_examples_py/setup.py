@@ -74,6 +74,7 @@ setup(
             'compare_2_link_robust = some_examples_py.CRCLF_CRCBF_2_link.compare_models:main',
             'compare_models_fbl_crclf = some_examples_py.CRCLF_CRCBF_2_link.compare_models_fbl_crclf:main',
             'pend_main_node = some_examples_py.CLF_CBF_pend.main_node:main',
+            'cr_7dof_main = some_examples_py.CRCLF_CRCBF_7_dof.main_node:main',
         ],
     },
 )
