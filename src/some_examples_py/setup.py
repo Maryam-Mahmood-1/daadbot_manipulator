@@ -75,6 +75,8 @@ setup(
             'compare_models_fbl_crclf = some_examples_py.CRCLF_CRCBF_2_link.compare_models_fbl_crclf:main',
             'pend_main_node = some_examples_py.CLF_CBF_pend.main_node:main',
             'cr_7dof_main = some_examples_py.CRCLF_CRCBF_7_dof.main_node:main',
+            'quantile_data_7_dof = some_examples_py.CRCLF_CRCBF_7_dof.quantile_data:run_pipeline',
+            'calculate_quantile = some_examples_py.CRCLF_CRCBF_2_link.calculate_quantile:main',
         ],
     },
 )

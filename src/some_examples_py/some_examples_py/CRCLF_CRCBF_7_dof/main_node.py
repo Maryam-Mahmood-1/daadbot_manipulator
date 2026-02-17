@@ -28,7 +28,7 @@ URDF_PATH = os.path.join(
     get_package_share_directory("daadbot_desc"),
     "urdf",
     "urdf_inverted_torque",
-    "daadbot.urdf"
+    "daadbot_noisy_pattern.urdf"
 )
 
 EE_NAMES = ["gear1_claw", "gear2_claw"]
@@ -40,7 +40,7 @@ class Gazebo7DOFConformalNode(Node):
         super().__init__('gazebo_cr_7dof_node')
         
         # --- 1. CONFORMAL PARAMETERS ---
-        self.q_quantile = 0.0  # From your 7-DOF calibration
+        self.q_quantile = 6000.0  # From your 7-DOF calibration
         
         # --- 2. CONTROLLER SETUP ---
         self.robot = RobotDynamics(URDF_PATH, EE_NAMES, ALL_JOINTS, noise_level=0.0)

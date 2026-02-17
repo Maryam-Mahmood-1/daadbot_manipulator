@@ -14,7 +14,7 @@ class RESCLF_Controller:
     Rearranged for QP (Ax ≤ b):
         LgV μ ≤ -γ V - LfV - (||∂V/∂x|| * q)
     """
-    def __init__(self, dim_task=3, kp=15.0, kv=15.0):
+    def __init__(self, dim_task=3, kp=10.0, kv=10.0):
         self.dim = dim_task
         
         # 1. System Matrices for Error Dynamics
@@ -25,8 +25,8 @@ class RESCLF_Controller:
         self.G = np.block([[zero], [eye]])
 
         # 2. Optimal Control Weights (LQR)
-        q_pos = 3000.0
-        q_vel = 1500.0
+        q_pos = 1000.0
+        q_vel = 500.0
         # --- FIX: DYNAMIC Q MATRIX CONSTRUCTION ---
         q_diagonal = [q_pos] * dim_task + [q_vel] * dim_task
 

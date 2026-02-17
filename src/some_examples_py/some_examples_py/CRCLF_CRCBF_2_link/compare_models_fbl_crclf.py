@@ -31,14 +31,14 @@ class ParallelComparisonNode(Node):
     def __init__(self):
         super().__init__('parallel_cr_comparison')
         
-        self.q_robust_val = 1000.0  
+        self.q_robust_val = 150.0  
         self.dt_phys = 0.001
         self.control_rate = 100.0
         self.cbf_active = False
         self.lock = threading.Lock()
-
-        self.labels = ['F. Lin (No CLF)', 'Nominal (q=0)', 'Robust (q=high)']
         self.quantiles = [0.0, 0.0, self.q_robust_val]
+        self.labels = ['F. Lin (No CLF)', 'Nominal (q=0)', 'Robust (q=high)']
+        
         
         self.models_phys = []
         self.data_phys = []
