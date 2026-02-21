@@ -1,0 +1,393 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="daadbot">
+
+  <xacro:arg name="is_sim" default="true"/>
+
+  <xacro:arg name = "is_ignition" default="true"/>
+
+  <xacro:arg name="transparent_top" default="false"/>
+
+  <xacro:property name="table_alpha" value="${'0.15' if '$(arg transparent_top)' == 'true' else '1.0'}"/>
+  <xacro:property name="base_link_alpha" value="${'0.27' if '$(arg transparent_top)' == 'true' else '1.0'}"/>
+
+  <xacro:include filename = "$(find daadbot_desc)/urdf/urdf_4dof_inverted_torque/daadbot_gazebo.xacro"/>
+  <xacro:include filename = "$(find daadbot_desc)/urdf/urdf_4dof_inverted_torque/daadbot_ros2_control.xacro"/>
+  <xacro:include filename = "$(find daadbot_desc)/urdf/urdf_4dof_inverted_torque/table_inv.xacro"/>
+  <!-- <xacro:include filename = "$(find daadbot_desc)/urdf/urdf_inverted/lab_table.xacro"/> -->
+
+
+ 
+  <xacro:property name='PI' value='3.141592653589793'/>
+  <xacro:property name='velocity' value='1.2'/>
+  <xacro:property name='effort' value='40.0'/>
+
+  <link name="world"/>
+
+
+  <!-- Attach the Table to the World -->
+  <joint name="table_joint" type="fixed">
+    <parent link="world"/>
+    <child link="table_top"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/> <!-- Adjust height of table -->
+  </joint>
+
+  <!-- Attach Daadbot to the Table -->
+  <joint name="base_joint" type="fixed">
+    <parent link="table_top"/>
+    <child link="base_link"/>
+    <origin xyz="0.000 0.0 1.285" rpy="0 3.14 0"/> <!-- Adjust position of the robot on the table -->
+    <!-- <origin xyz="0.005 0.1725 1.24" rpy="0 3.14 1.57"/>-->
+    <!-- For inverted - I have changed rpy to 0 3.14 0 from rpy = 0 0 0 -->
+  </joint>
+
+  <link
+    name="base_link">
+    <inertial>
+      <origin
+        xyz="-0.00246645540256236 -0.00131466478904116 0.00320374562257973"
+        rpy="0 0 0" />
+      <mass
+        value="6.91122989464636" />
+      <inertia
+        ixx="0.0466171750852481"
+        ixy="0.00010076855342015"
+        ixz="5.14819747192778E-08"
+        iyy="0.0464821203083076"
+        iyz="-1.44621889265211E-07"
+        izz="0.0929840869855057" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://daadbot_desc/meshes/base_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba= "1 1 1 ${base_link_alpha}" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://daadbot_desc/meshes/base_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="Link_1">
+    <inertial>
+      <origin
+        xyz="0.0222146013900772 2.73568109690481E-06 0.0747841784291177"
+        rpy="0 0 3.14" />
+      <mass
+        value="2.34948803406793" />
+      <inertia
+        ixx="0.00332922517000865"
+        ixy="1.64875308454708E-07"
+        ixz="-0.000433929392474112"
+        iyy="0.00524724735039028"
+        iyz="2.38505609352415E-07"
+        izz="0.00419520671173006" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://daadbot_desc/meshes/Link_1.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba= "0.329 0.322 0.302 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://daadbot_desc/meshes/Link_1.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_1"
+    type="revolute">
+    <origin
+      xyz="-0.0029638 -0.0015759 0.04796"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="Link_1" />
+    <axis
+      xyz="0 0 -1" />
+    <limit
+      lower="-3.2"
+      upper="3.2"
+      effort="${effort}"
+      velocity="${velocity}" />
+      <dynamics damping="0.3" friction="0.0"/>
+
+  </joint>
+  <gazebo reference="joint_1">
+  <sensor name="ft_sensor_joint_1" type="force_torque">
+    <always_on>true</always_on>
+    <update_rate>1000</update_rate>
+    <force_torque>
+      <frame>child</frame>
+      <measure_direction>child_to_parent</measure_direction>
+    </force_torque>
+    <pose>0 0 0 0 0 0</pose>
+  </sensor>
+</gazebo>
+  <link
+    name="Link_2">
+    <inertial>
+      <origin
+        xyz="0.121210588587965 0.000230649813345946 -0.049540637756618"
+        rpy="0 0 0" />
+      <mass
+        value="2.24401700155026" />
+      <inertia
+        ixx="0.00389001580470153"
+        ixy="1.8291659115195E-06"
+        ixz="2.04233321611583E-07"
+        iyy="0.00259728697678572"
+        iyz="3.29392581309982E-08"
+        izz="0.00312685277067708" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://daadbot_desc/meshes/Link_2.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba= "1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://daadbot_desc/meshes/Link_2.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_2"
+    type="revolute">
+    <origin
+      xyz="0.0400000000000002 -0.050000000000002 0.114463048454132"
+      rpy="1.57 -1.57 0" />
+    <parent
+      link="Link_1" />
+    <child
+      link="Link_2" />
+    <axis
+      xyz="0 0 -1" />
+    <limit
+      lower="-1.745"
+      upper="1.745"
+      effort="${effort}"
+      velocity="${velocity}" />
+      <dynamics damping="0.3" friction="0.0"/>
+
+    <sensor name="force_torque" type="force_torque">
+          <update_rate>30</update_rate>
+    </sensor>
+  </joint>
+  
+  <link
+    name="Link_3">
+    <inertial>
+      <origin
+        xyz="-0.00448997206818821 -2.34751712904213E-05 0.0488571768392556"
+        rpy="0 0 0" />
+      <mass
+        value="1.2718719681393" />
+      <inertia
+        ixx="0.00206983011422612"
+        ixy="9.27500479472452E-08"
+        ixz="3.38378548754623E-06"
+        iyy="0.00129565231901482"
+        iyz="2.88989653562542E-07"
+        izz="0.00156994991003151" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://daadbot_desc/meshes/Link_3.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba= "0.329 0.322 0.302 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://daadbot_desc/meshes/Link_3.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_3"
+    type="revolute">
+    <origin
+      xyz="0.234499999999998 0 -0.0495000000000002"
+      rpy="0 1.5707963267949 0" />
+    <parent
+      link="Link_2" />
+    <child
+      link="Link_3" />
+    <axis
+      xyz="0 0 -1" />
+    <limit
+      lower="-7.0"
+      upper="7.0"
+      effort="${effort}"
+      velocity="${velocity}" />
+      <dynamics damping="0.3" friction="0.0"/>
+
+  </joint>
+  <link
+    name="Link_4">
+    <inertial>
+      <origin
+        xyz="-0.119169680650385 -0.000128811902195713 0.0378163924527294"
+        rpy="0 0 0" />
+      <mass
+        value="2.67615775175726" />
+      <inertia
+        ixx="0.00308017562479927"
+        ixy="2.47453551729311E-06"
+        ixz="-7.09348932448939E-07"
+        iyy="0.00238129778603005"
+        iyz="-7.47320677385655E-07"
+        izz="0.00293128138362422" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://daadbot_desc/meshes/Link_4.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba= "1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://daadbot_desc/meshes/Link_4.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_4"
+    type="revolute">
+    <origin
+      xyz="-0.0324999999999996 0 0.0750000000000004"
+      rpy="0 1.5707963267949 0" />
+    <parent
+      link="Link_3" />
+    <child
+      link="Link_4" />
+    <axis
+      xyz="0 0 -1" />
+    <limit
+      lower="-1.745"
+      upper="1.745"
+      effort="${effort}"
+      velocity="${velocity}" />
+      <dynamics damping="0.3" friction="0.0"/>
+
+  </joint>
+  <link
+    name="endeffector">
+    <inertial>
+      <origin
+        xyz="0.0115230217195728 -0.0136127070797983 0.0256571894660979"
+        rpy="0 0 0" />
+      <mass
+        value="0.154057788286255" />
+      <inertia
+        ixx="3.1964247663854E-05"
+        ixy="1.07138220152465E-07"
+        ixz="4.30086683390955E-12"
+        iyy="2.53636526523542E-05"
+        iyz="-9.8230347105402E-08"
+        izz="4.73802906093003E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://daadbot_desc/meshes/endeffector.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba= "1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://daadbot_desc/meshes/endeffector.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="endeffector_joint"
+    type="fixed">
+    <origin
+      xyz="-0.2284999036789 0 0.0330000000000004"
+      rpy="3.14159265358979 1.5707963267949 0" />
+    <parent
+      link="Link_4" />
+    <child
+      link="endeffector" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+
+</robot>

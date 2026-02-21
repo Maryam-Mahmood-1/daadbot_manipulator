@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="lab_table" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:property name="total_width" value="2.5" />
+  <xacro:property name="beam_height" value="1.35" />
+  <xacro:property name="pillar_offset" value="1.2" />
+
+  <link name="table_top">
+    <inertial>
+      <origin xyz="0 0 0.5" rpy="0 0 0" />
+      <mass value="50.0" />
+      <inertia ixx="10.0" ixy="0" ixz="0" iyy="10.0" iyz="0" izz="10.0" />
+    </inertial>
+    
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="1.0 ${total_width} 0.05" />
+      </geometry>
+      <material name="grey_base">
+        <color rgba="0.81 0.81 0.63 ${table_alpha}" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="1.0 ${total_width} 0.05" />
+      </geometry>
+    </collision>
+
+    <visual>
+      <origin xyz="0 ${pillar_offset} ${beam_height/2}" rpy="0 0 0" />
+      <geometry>
+         <box size="0.2 0.2 ${beam_height}" />
+      </geometry>
+      <material name="wood_pillar_l">
+        <color rgba="0.81 0.66 0.41 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 ${pillar_offset} ${beam_height/2}" rpy="0 0 0" />
+      <geometry>
+         <box size="0.2 0.2 ${beam_height}" />
+      </geometry>
+    </collision>
+
+    <visual>
+      <origin xyz="0 -${pillar_offset} ${beam_height/2}" rpy="0 0 0" />
+      <geometry>
+         <box size="0.2 0.2 ${beam_height}" />
+      </geometry>
+      <material name="wood_pillar_r">
+        <color rgba="0.81 0.66 0.41 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 -${pillar_offset} ${beam_height/2}" rpy="0 0 0" />
+      <geometry>
+         <box size="0.2 0.2 ${beam_height}" />
+      </geometry>
+    </collision>
+
+    <visual>
+      <origin xyz="0 0 ${beam_height}" rpy="0 0 0" />
+      <geometry>
+         <box size="0.4 ${total_width} 0.1" />
+      </geometry>
+      <material name="wood_beam">
+        <color rgba="0.81 0.66 0.41 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 ${beam_height}" rpy="0 0 0" />
+      <geometry>
+         <box size="0.4 ${total_width} 0.1" />
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="table_link1">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.001" />
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001" />
+    </inertial>
+  </link>
+
+  <joint name="jnt1" type="fixed">
+    <origin xyz="0.005 0 1.28" rpy="-1.5708 0 3.1416" />
+    <parent link="table_top" />
+    <child link="table_link1" />
+    <axis xyz="0 0 0" />
+  </joint>
+
+</robot>

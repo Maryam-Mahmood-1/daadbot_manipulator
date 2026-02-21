@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="lab_table" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <link
+    name="table_top">
+    <inertial>
+      <origin
+        xyz="0.063083 0.069652 0.6734"
+        rpy="0 0 0" />
+      <mass
+        value="344.69" />
+      <inertia
+        ixx="46.88"
+        ixy="2.3242"
+        ixz="16.734"
+        iyy="257.8"
+        iyz="-4.2747"
+        izz="247.66" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://daadbot_desc/meshes_lab_table/base_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.81 0.66 0.41 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://daadbot_desc/meshes_lab_table/base_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="table_link1">
+    <inertial>
+      <origin
+        xyz="0 0.0099214 -2.2204E-16"
+        rpy="0 0 0" />
+      <mass
+        value="3.8002" />
+      <inertia
+        ixx="0.051284"
+        ixy="4.5561E-20"
+        ixz="-2.1258E-18"
+        iyy="0.25592"
+        iyz="-1.7014E-16"
+        izz="0.20488" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://daadbot_desc/meshes_lab_table/link1.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.81 0.66 0.41 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://daadbot_desc/meshes_lab_table/link1.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="jnt1"
+    type="fixed">
+    <origin
+      xyz="0.005 0.1725 1.27"
+      rpy="-1.5708 0 3.1416" />
+    <parent
+      link="table_top" />
+    <child
+      link="table_link1" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+</robot>
