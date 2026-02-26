@@ -1,117 +1,117 @@
 import pinocchio as pin
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import os
+from sklearn.model_selection import train_test_split
 
-# --- 1. Configuration ---
+# --- CONFIGURATION ---
 URDF_PATH = "/home/maryammahmood/xdaadbot_ws/src/daadbot_desc/urdf/2_link_urdf/2link_robot.urdf"
-EE_FRAME_NAME = "endEffector" 
-NUM_TRAJECTORIES = 300
-TRAJ_DURATION = 10.0  # 10 seconds per snippet
-HZ = 100
-DT = 1.0 / HZ
+DATA_DIR = "robot_data" # Folder to store splits
+NUM_TRAJECTORIES = 10000
+TRAJ_DURATION = 5.0  
 
-# --- 2. Load Model ---
-if not os.path.exists(URDF_PATH):
-    print(f"Error: URDF not found at {URDF_PATH}. Please ensure xacro is converted.")
-    exit()
+def collect_robot_data():
+    if not os.path.exists(URDF_PATH):
+        raise FileNotFoundError(f"URDF not found at {URDF_PATH}")
+    if not os.path.exists(DATA_DIR):
+        os.makedirs(DATA_DIR)
 
-model = pin.buildModelFromUrdf(URDF_PATH)
-data = model.createData()
-nq, nv = model.nq, model.nv
-ee_frame_id = model.getFrameId(EE_FRAME_NAME)
-
-# --- 3. Persistent Excitation Trajectory Generator ---
-def generate_sos_params(num_joints):
-    # Prime-ish frequencies to avoid periodic overlap
-    freqs = np.random.uniform(0.5, 5.0, (num_joints, 4))
-    phases = np.random.uniform(0, 2*np.pi, (num_joints, 4))
-    # Base amplitudes
-    amps = np.random.uniform(0.1, 0.4, (num_joints, 4))
-    return freqs, phases, amps
-
-def collect_data():
+    model = pin.buildModelFromUrdf(URDF_PATH)
+    data = model.createData()
+    nq, ee_id = model.nq, model.getFrameId("endEffector")
     all_rows = []
-    print(f"Starting collection of {NUM_TRAJECTORIES} trajectories...")
 
+    print(f"Collecting {NUM_TRAJECTORIES} trajectories...")
     for traj_id in range(NUM_TRAJECTORIES):
-        freqs, phases, amps = generate_sos_params(nq)
+        freqs = np.random.uniform(0.5, 5.0, (nq, 3))
+        phases = np.random.uniform(0, 2*np.pi, (nq, 3))
+        amps = np.random.uniform(0.1, 0.5, (nq, 3))
         
-        for step in range(int(TRAJ_DURATION * HZ)):
-            t = step * DT
+        for t in np.arange(0, TRAJ_DURATION, 0.01):
             q, dq, ddq = np.zeros(nq), np.zeros(nq), np.zeros(nq)
-            
             for j in range(nq):
-                for f_idx in range(4):
-                    w = freqs[j, f_idx]
-                    p = phases[j, f_idx]
-                    # Lipschitz Scaling: Amplitude / w ensures bounded velocity
-                    a = amps[j, f_idx] / w 
-                    
+                for f_idx in range(3):
+                    w, p, a = freqs[j, f_idx], phases[j, f_idx], amps[j, f_idx]
                     q[j]   += a * np.sin(w * t + p)
                     dq[j]  += a * w * np.cos(w * t + p)
                     ddq[j] -= a * (w**2) * np.sin(w * t + p)
             
-            # Dynamics (RNEA)
             tau = pin.rnea(model, data, q, dq, ddq)
-            
-            # Task Space Kinematics
             pin.forwardKinematics(model, data, q, dq, ddq)
             pin.updateFramePlacements(model, data)
-            pos = data.oMf[ee_frame_id].translation
-            acc_vec = pin.getFrameAcceleration(model, data, ee_frame_id, pin.ReferenceFrame.WORLD)
+            pin.computeJointJacobiansTimeVariation(model, data, q, dq)
             
-            all_rows.append(np.concatenate([
-                [traj_id], q, dq, ddq, tau, pos, acc_vec.linear
-            ]))
+            pos = data.oMf[ee_id].translation
+            acc = pin.getFrameClassicalAcceleration(model, data, ee_id, pin.ReferenceFrame.WORLD).linear
+            all_rows.append(np.concatenate([[traj_id], q, dq, ddq, tau, pos, acc]))
             
-    return all_rows
-
-# --- 4. Execution and Verification ---
-raw_data = collect_data()
-cols = ['traj_id', 'q1', 'q2', 'dq1', 'dq2', 'ddq1', 'ddq2', 
-        'tau1', 'tau2', 'x', 'y', 'z', 'ddx', 'ddy', 'ddz']
-df = pd.DataFrame(raw_data, columns=cols)
-
-# Verification 1: Lipschitz Continuity Check
-max_vel = df[['dq1', 'dq2']].abs().max().max()
-print(f"--- Verification ---")
-print(f"Max Joint Velocity: {max_vel:.2f} rad/s (Lipschitz Check)")
-
-# Verification 2: Acceleration Richness
-std_acc = df[['ddq1', 'ddq2']].std().mean()
-print(f"Acceleration Excitation (Std Dev): {std_acc:.2f}")
-if std_acc < 0.5:
-    print("Warning: Low acceleration richness. Consider increasing amplitudes.")
-
-# Verification 3: Histogram Distribution Plot
-def plot_verifications(dataframe):
-    plt.figure(figsize=(12, 5))
+    df = pd.DataFrame(all_rows, columns=['traj_id', 'q1', 'q2', 'dq1', 'dq2', 'ddq1', 'ddq2', 
+                                         'tau1', 'tau2', 'x', 'y', 'z', 'ddx', 'ddy', 'ddz'])
     
-    # Histogram of Joint Accelerations
-    plt.subplot(1, 2, 1)
-    plt.hist(dataframe['ddq1'], bins=50, alpha=0.5, label='Joint 1')
-    plt.hist(dataframe['ddq2'], bins=50, alpha=0.5, label='Joint 2')
-    plt.title("Acceleration Distribution")
-    plt.xlabel("rad/s²")
-    plt.legend()
-    
-    # Sample Trajectory Plot (First 5 seconds)
-    plt.subplot(1, 2, 2)
-    sample_traj = dataframe[dataframe['traj_id'] == 0]
-    plt.plot(sample_traj['q1'], label='q1')
-    plt.plot(sample_traj['q2'], label='q2')
-    plt.title("Sample Trajectory Snippet (5s)")
-    plt.xlabel("Samples")
-    plt.ylabel("Radians")
-    plt.legend()
-    
-    plt.tight_layout()
-    plt.show()
+    # --- STRATEGIC SPLITTING ---
+    traj_ids = df['traj_id'].unique()
+    train_ids, test_ids = train_test_split(traj_ids, test_size=0.2, random_state=42)
+    train_ids, val_ids = train_test_split(train_ids, test_size=0.1, random_state=42)
 
-plot_verifications(df)
+    df[df['traj_id'].isin(train_ids)].to_csv(f"{DATA_DIR}/train_data.csv", index=False)
+    df[df['traj_id'].isin(val_ids)].to_csv(f"{DATA_DIR}/val_data.csv", index=False)
+    df[df['traj_id'].isin(test_ids)].to_csv(f"{DATA_DIR}/test_data.csv", index=False)
+    
+    print(f"Datasets saved in {DATA_DIR}/ (Train: {len(train_ids)}, Val: {len(val_ids)}, Test: {len(test_ids)} trajectories)")
 
-# Save
-df.to_csv("2dof_trajectory_dataset.csv", index=False)
-print("Dataset saved to 2dof_trajectory_dataset.csv")
+if __name__ == "__main__":
+    collect_robot_data()
+
+
+
+
+# import pinocchio as pin
+# import numpy as np
+# import pandas as pd
+# import os
+
+# # --- CONFIGURATION ---
+# URDF_PATH = "/home/maryammahmood/xdaadbot_ws/src/daadbot_desc/urdf/2_link_urdf/2link_robot.urdf"
+# CSV_FILE = "2dof_trajectory_dataset.csv"
+# NUM_TRAJECTORIES = 5000
+# TRAJ_DURATION = 10.0  # seconds
+
+# def collect_robot_data():
+#     if not os.path.exists(URDF_PATH):
+#         raise FileNotFoundError(f"URDF not found at {URDF_PATH}")
+
+#     model = pin.buildModelFromUrdf(URDF_PATH)
+#     data = model.createData()
+#     nq, ee_id = model.nq, model.getFrameId("endEffector")
+#     all_rows = []
+
+#     print(f"Collecting {NUM_TRAJECTORIES} trajectories for rich excitation...")
+#     for traj_id in range(NUM_TRAJECTORIES):
+#         # High-frequency frequencies to capture Coriolis effects
+#         freqs = np.random.uniform(0.5, 6.0, (nq, 4))
+#         phases = np.random.uniform(0, 2*np.pi, (nq, 4))
+#         amps = np.random.uniform(0.1, 0.4, (nq, 4))
+        
+#         for t in np.arange(0, TRAJ_DURATION, 0.01):
+#             q, dq, ddq = np.zeros(nq), np.zeros(nq), np.zeros(nq)
+#             for j in range(nq):
+#                 for f_idx in range(4):
+#                     w, p, a = freqs[j, f_idx], phases[j, f_idx], amps[j, f_idx] / freqs[j, f_idx]
+#                     q[j]   += a * np.sin(w * t + p)
+#                     dq[j]  += a * w * np.cos(w * t + p)
+#                     ddq[j] -= a * (w**2) * np.sin(w * t + p)
+            
+#             tau = pin.rnea(model, data, q, dq, ddq)
+#             pin.forwardKinematics(model, data, q, dq, ddq)
+#             pin.updateFramePlacements(model, data)
+#             pos = data.oMf[ee_id].translation
+#             acc = pin.getFrameAcceleration(model, data, ee_id, pin.ReferenceFrame.WORLD).linear
+#             all_rows.append(np.concatenate([[traj_id], q, dq, ddq, tau, pos, acc]))
+            
+#     df = pd.DataFrame(all_rows, columns=['traj_id', 'q1', 'q2', 'dq1', 'dq2', 'ddq1', 'ddq2', 
+#                                          'tau1', 'tau2', 'x', 'y', 'z', 'ddx', 'ddy', 'ddz'])
+#     df.to_csv(CSV_FILE, index=False)
+#     print(f"Dataset saved to {CSV_FILE}")
+
+# if __name__ == "__main__":
+#     collect_robot_data()

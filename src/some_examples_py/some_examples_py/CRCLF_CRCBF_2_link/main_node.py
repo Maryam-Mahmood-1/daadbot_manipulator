@@ -1,224 +1,495 @@
-"""
-Main Node for 2-DOF Robot: Conformal Robustness (CR) Implementation
-Uses Noisy URDF for internal control and True URDF for physics-based simulation.
-"""
+#!/usr/bin/env python3
+
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import JointState
-from std_msgs.msg import Float64MultiArray
 import numpy as np
 import threading
 import time
+import pinocchio as pin
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import CheckButtons 
-import os
-from ament_index_python.packages import get_package_share_directory
-
-# --- PATHS ---
-# Noisy URDF for the Controller (Simulating unknown true dynamics)
-URDF_NOISY = os.path.join(
-    get_package_share_directory("daadbot_desc"),
-    "urdf",
-    "2_link_urdf",
-    "2link_robot_noisy_3.urdf"
-)
-# The true URDF is assumed to be running in the Gazebo simulation environment
 
 # --- MODULAR IMPORTS ---
-from some_examples_py.CRCLF_CRCBF_2_link.robot_dynamics import RobotDynamics
+from some_examples_py.CRCLF_CRCBF_2_link.dynamics_wrapper import LearnedRobotDynamics
 from some_examples_py.CRCLF_CRCBF_2_link.trajectory_generator import TrajectoryGenerator
 from some_examples_py.CRCLF_CRCBF_2_link.resclf_controller import RESCLF_Controller
 from some_examples_py.CRCLF_CRCBF_2_link.cbf_formulation import CBF_SuperEllipsoid 
 from some_examples_py.CRCLF_CRCBF_2_link.qp_solver import solve_optimization
 
+# --- PATHS ---
+import os
+from ament_index_python.packages import get_package_share_directory
+
+URDF_GEOM = os.path.join(
+    get_package_share_directory("daadbot_desc"),
+    "urdf",
+    "2_link_urdf",
+    "2link_robot.urdf"
+)
+
+MODEL_PKL = "robot_dynamics_model.pkl"
+
 EE_NAMES = ["endEffector"]
 ALL_JOINTS = ["baseHinge", "interArm"]
 
-class GazeboConformalRobustNode(Node):
+
+class ParallelComparisonNode(Node):
     def __init__(self):
-        super().__init__('gazebo_cr_node')
-        
-        # --- 1. CONFORMAL PARAMETERS ---
-        # Statistical quantile derived from prediction error rank statistics [cite: 9, 102]
-        # This quantile q_{1-delta} quantifies model uncertainty [cite: 131, 139]
-        self.q_quantile = 6000.0  # Example: Cartpole benchmark quantile [cite: 286]
-        
-        # --- 2. CONTROLLER SETUP ---
-        # Initialize internal model with NOISY URDF to represent data-driven uncertainty [cite: 128]
-        self.robot_ctrl = RobotDynamics(URDF_NOISY, EE_NAMES, ALL_JOINTS, noise_level=0.0)
-        self.traj_gen = TrajectoryGenerator() 
-        self.clf_ctrl = RESCLF_Controller(dim_task=2) 
-        
-        # Safety Barrier (CR-Barrier candidate) [cite: 10]
-        self.cbf = CBF_SuperEllipsoid(
-            center=[0.0, 0.0, 0.0], 
-            lengths=[1.1, 1.1, 3.0], # Reduced margin for safety robustness
-            power_n=4, k_pos=45.0, k_vel=30.0
-        )
-        self.cbf_active = False 
+        super().__init__('parallel_cr_comparison')
 
-        # --- 3. ROS INTERFACE ---
-        self.sub = self.create_subscription(JointState, '/joint_states', self.cb_joints, 10)
-        self.pub = self.create_publisher(Float64MultiArray, '/arm_controller/commands', 10)
-        self.timer = self.create_timer(0.01, self.control_loop) 
-        
-        # --- 4. STATE ---
+        self.dt_phys = 0.001
+        self.control_rate = 100.0
+        self.cbf_active = False
+        self.lock = threading.Lock()
+
+        self.labels = ['F. Lin (No CLF)', 'Nominal (Learned)', 'Robust (Learned+CR)']
+
+        self.models_phys = []
+        self.data_phys = []
+        self.q_sims = []
+        self.v_sims = []
+        self.tau_cmds = []
+
+        self.robot_ctrls = []
+        self.clf_ctrls = []
+        self.cbfs = []
+
+        self.traj_gen = TrajectoryGenerator()
+
+        # Load learned model once to read quantile
+        temp_model = LearnedRobotDynamics(MODEL_PKL, URDF_GEOM, EE_NAMES)
+        learned_q = temp_model.q_quantile
+        self.quantiles = [0.0, 0.0, learned_q]
+
+        self.get_logger().info(f"Loaded learned quantile: {learned_q:.4f}")
+
+        for q_val in self.quantiles:
+            m = pin.buildModelFromUrdf(URDF_GEOM)
+            self.models_phys.append(m)
+            self.data_phys.append(m.createData())
+
+            qs = pin.neutral(m)
+            jid1 = m.getJointId(ALL_JOINTS[1])
+            qs[m.joints[jid1].idx_q] = 0.1
+            self.q_sims.append(qs)
+
+            self.v_sims.append(np.zeros(m.nv))
+            self.tau_cmds.append(np.zeros(2))
+
+            # --- Learned dynamics model ---
+            self.robot_ctrls.append(
+                LearnedRobotDynamics(MODEL_PKL, URDF_GEOM, EE_NAMES)
+            )
+
+            self.clf_ctrls.append(RESCLF_Controller(dim_task=2))
+
+            self.cbfs.append(
+                CBF_SuperEllipsoid(
+                    center=[0.0, 0.0, 0.0],
+                    lengths=[1.1, 1.1, 3.0],
+                    power_n=4,
+                    k_pos=30.0,
+                    k_vel=21.0
+                )
+            )
+
+        self.tau_limits = np.array([40.0, 30.0])
+        self.phys_joint_ids = [self.models_phys[0].getJointId(name) for name in ALL_JOINTS]
+
+        self.log = {
+            lbl: {'t':[], 'x':[], 'y':[], 'xd':[], 'yd':[], 'V':[], 'h':[], 'mu':[], 'tau1':[], 'tau2':[]}
+            for lbl in self.labels
+        }
+
+        self.running = True
+        self.phys_thread = threading.Thread(target=self.physics_loop, daemon=True)
+        self.phys_thread.start()
+
+        self.timer = self.create_timer(1.0/self.control_rate, self.control_loop)
         self.start_time = None
-        self.q = np.array([0.0, 0.1])
-        self.dq = np.zeros(2)
-        
-        # Torque limits remain high to allow the QP to find feasible solutions [cite: 602]
-        self.tau_limits = np.array([20.0, 15.0]) 
 
-        # --- 5. LOGGING ---
-        self.log = {'t':[], 'x':[], 'y':[], 'xd':[], 'yd':[], 'h':[], 'mu':[]}
 
-    def cb_joints(self, msg):
-        q_buf, dq_buf = [0.0]*2, [0.0]*2
-        found = 0
-        for i, name in enumerate(ALL_JOINTS):
-            if name in msg.name:
-                idx = msg.name.index(name)
-                q_buf[i] = msg.position[idx]
-                dq_buf[i] = msg.velocity[idx]
-                found += 1
-        if found == 2:
-            self.q, self.dq = np.array(q_buf), np.array(dq_buf)
+    def physics_loop(self):
+        next_tick = time.time()
+        while self.running:
+            with self.lock:
+                for i in range(len(self.labels)):
+                    tau_full = np.zeros(self.models_phys[i].nv)
+                    damping = 0.15 * self.v_sims[i]
+
+                    for idx, jid in enumerate(self.phys_joint_ids):
+                        idx_v = self.models_phys[i].joints[jid].idx_v
+                        tau_full[idx_v] = self.tau_cmds[i][idx] - damping[idx_v]
+
+                    ddq = pin.aba(
+                        self.models_phys[i],
+                        self.data_phys[i],
+                        self.q_sims[i],
+                        self.v_sims[i],
+                        tau_full
+                    )
+
+                    self.v_sims[i] += ddq * self.dt_phys
+                    self.q_sims[i] = pin.integrate(
+                        self.models_phys[i],
+                        self.q_sims[i],
+                        self.v_sims[i] * self.dt_phys
+                    )
+
+            next_tick += self.dt_phys
+            sleep_time = next_tick - time.time()
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+
 
     def control_loop(self):
-        if self.start_time is None: self.start_time = time.time()
+        if self.start_time is None:
+            self.start_time = time.time()
+
         t_clock = time.time() - self.start_time
 
-        # A. DYNAMICS (Model learning-based [cite: 174])
-        M, nle, J, dJ, x, dx = self.robot_ctrl.compute_dynamics(self.q, self.dq)
-        J = J[0:2, :]; dJ = dJ[0:2, :]; x_2d = x[0:2]; dx_2d = dx[0:2]
+        for i in range(len(self.labels)):
 
-        # B. TRAJECTORY [cite: 603]
-        xd_f, vd_f, ad_f = self.traj_gen.get_ref(t_clock, current_actual_pos=np.pad(x_2d, (0,1)))
-        xd, vd, ad = xd_f[:2], vd_f[:2], ad_f[:2]
+            with self.lock:
+                q_curr = np.array([
+                    self.q_sims[i][self.models_phys[i].joints[jid].idx_q]
+                    for jid in self.phys_joint_ids
+                ])
 
-        # C. CR-CLF (Conformally Robust Lyapunov Function) [cite: 143, 144]
-        # robust_clf_term = ||dV/dx|| * q_{1-delta} [cite: 145]
-        LfV, LgV, V, gamma, robust_clf_term = self.clf_ctrl.get_lyapunov_constraints(
-            x_2d, dx_2d, xd, vd, q_quantile=self.q_quantile
-        )
+                dq_curr = np.array([
+                    self.v_sims[i][self.models_phys[i].joints[jid].idx_v]
+                    for jid in self.phys_joint_ids
+                ])
 
-        # D. CR-CBF (Conformally Robust Barrier Function) [cite: 168, 169]
-        cbf_A, cbf_b = None, None
-        x_3d = np.array([x_2d[0], x_2d[1], 0.0])
-        h_val = self.cbf.get_h_value(x_3d)
+            # --- Learned Dynamics ---
+            M, nle, J, dJ, x, dx = self.robot_ctrls[i].compute_dynamics(q_curr, dq_curr)
 
-        if self.cbf_active:
-            dx_3d = np.array([dx_2d[0], dx_2d[1], 0.0])
-            u_nominal = self.clf_ctrl.get_nominal_acceleration(x_2d, dx_2d, xd, vd)
-            u_ref_3d = np.array([ad[0]+u_nominal[0], ad[1]+u_nominal[1], 0.0])
-            
-            # Penalizes safety margin by uncertainty: ||dh/dx|| * q_{1-delta} [cite: 170, 188]
-            A_temp, b_temp = self.cbf.get_constraints(
-                x_3d, dx_3d, u_ref_3d, q_quantile=2.4
+            J_2d = J[0:2, :]
+            dJ_2d = dJ[0:2, :]
+            x_2d = x[0:2]
+            dx_2d = dx[0:2]
+
+            xd_f, vd_f, ad_f = self.traj_gen.get_ref(
+                t_clock,
+                current_actual_pos=np.pad(x_2d, (0,1))
             )
-            cbf_A = A_temp[:, :2] 
-            cbf_b = b_temp
 
-        # E. QP SETUP (Robustifying standard conditions [cite: 50])
-        J_pinv = np.linalg.pinv(J)
-        u_ref = ad + self.clf_ctrl.get_nominal_acceleration(x_2d, dx_2d, xd, vd)
+            xd = xd_f[:2]
+            vd = vd_f[:2]
+
+            u_nom = self.clf_ctrls[i].get_nominal_acceleration(
+                x_2d, dx_2d, xd, vd
+            )
+
+            u_ref = ad_f[:2] + u_nom
+
+            LfV, LgV, V_val, gamma, robust_clf_term = \
+                self.clf_ctrls[i].get_lyapunov_constraints(
+                    x_2d,
+                    dx_2d,
+                    xd,
+                    vd,
+                    q_quantile=self.quantiles[i]
+                )
+
+            J_pinv = np.linalg.pinv(J_2d)
+
+            if i == 0:
+                mu = np.zeros(2)
+                feasible = True
+                h_val = self.cbfs[i].get_h_value(np.array([x_2d[0], x_2d[1], 0.0]))
+            else:
+                cbf_A, cbf_b = None, None
+                h_val = self.cbfs[i].get_h_value(np.array([x_2d[0], x_2d[1], 0.0]))
+
+                if self.cbf_active:
+                    x_3d = np.array([x_2d[0], x_2d[1], 0.0])
+                    dx_3d = np.array([dx_2d[0], dx_2d[1], 0.0])
+                    u_ref_3d = np.array([u_ref[0], u_ref[1], 0.0])
+
+                    A_temp, b_temp = self.cbfs[i].get_constraints(
+                        x_3d,
+                        dx_3d,
+                        u_ref_3d,
+                        q_quantile=self.quantiles[i]
+                    )
+
+                    cbf_A = A_temp[:, :2]
+                    cbf_b = b_temp
+
+                b_tau_bias = (M @ J_pinv @ (u_ref - (dJ_2d @ dq_curr))) + nle
+
+                A_tau = np.vstack([M @ J_pinv, -M @ J_pinv])
+                b_tau = np.hstack([
+                    self.tau_limits - b_tau_bias,
+                    self.tau_limits + b_tau_bias
+                ]).reshape(-1, 1)
+
+                mu, feasible = solve_optimization(
+                    LfV,
+                    LgV,
+                    V_val,
+                    gamma,
+                    robust_clf_term,
+                    A_tau,
+                    b_tau,
+                    cbf_A,
+                    cbf_b
+                )
+
+            if feasible:
+                self.tau_cmds[i] = np.clip(
+                    (M @ J_pinv @ (u_ref + mu - (dJ_2d @ dq_curr))) + nle,
+                    -self.tau_limits,
+                    self.tau_limits
+                )
+            else:
+                self.tau_cmds[i] = -8.0 * dq_curr + nle
+
+            lbl = self.labels[i]
+
+            with self.lock:
+                if len(self.log[lbl]['t']) > 400:
+                    for k in self.log[lbl]:
+                        self.log[lbl][k].pop(0)
+
+                self.log[lbl]['t'].append(t_clock)
+                self.log[lbl]['x'].append(x_2d[0])
+                self.log[lbl]['y'].append(x_2d[1])
+                self.log[lbl]['xd'].append(xd[0])
+                self.log[lbl]['yd'].append(xd[1])
+                self.log[lbl]['V'].append(V_val)
+                self.log[lbl]['h'].append(h_val)
+                self.log[lbl]['mu'].append(np.linalg.norm(mu))
+                self.log[lbl]['tau1'].append(self.tau_cmds[i][0])
+                self.log[lbl]['tau2'].append(self.tau_cmds[i][1])
+
+
+
+
+
+# """
+# Main Node for 2-DOF Robot: Conformal Robustness (CR) Implementation
+# Uses Noisy URDF for internal control and True URDF for physics-based simulation.
+# """
+# import rclpy
+# from rclpy.node import Node
+# from sensor_msgs.msg import JointState
+# from std_msgs.msg import Float64MultiArray
+# import numpy as np
+# import threading
+# import time
+# import matplotlib.pyplot as plt
+# from matplotlib.animation import FuncAnimation
+# from matplotlib.widgets import CheckButtons 
+# import os
+# from ament_index_python.packages import get_package_share_directory
+
+# # --- PATHS ---
+# # Noisy URDF for the Controller (Simulating unknown true dynamics)
+# URDF_NOISY = os.path.join(
+#     get_package_share_directory("daadbot_desc"),
+#     "urdf",
+#     "2_link_urdf",
+#     "2link_robot_noisy_3.urdf"
+# )
+# # The true URDF is assumed to be running in the Gazebo simulation environment
+
+# # --- MODULAR IMPORTS ---
+# from some_examples_py.CRCLF_CRCBF_2_link.robot_dynamics import RobotDynamics
+# from some_examples_py.CRCLF_CRCBF_2_link.trajectory_generator import TrajectoryGenerator
+# from some_examples_py.CRCLF_CRCBF_2_link.resclf_controller import RESCLF_Controller
+# from some_examples_py.CRCLF_CRCBF_2_link.cbf_formulation import CBF_SuperEllipsoid 
+# from some_examples_py.CRCLF_CRCBF_2_link.qp_solver import solve_optimization
+
+# EE_NAMES = ["endEffector"]
+# ALL_JOINTS = ["baseHinge", "interArm"]
+
+# class GazeboConformalRobustNode(Node):
+#     def __init__(self):
+#         super().__init__('gazebo_cr_node')
         
-        drift_acc = u_ref - (dJ @ self.dq)
-        b_tau_bias = (M @ J_pinv @ drift_acc) + nle
-        A_tau_base = M @ J_pinv
-        A_tau = np.vstack([A_tau_base, -A_tau_base])
-        b_tau = np.hstack([self.tau_limits - b_tau_bias, self.tau_limits + b_tau_bias]).reshape(-1, 1)
-
-        # F. SOLVE CR-QP [cite: 184, 249]
-        # Incorporates robustness terms to guarantee safety/stability with probability >= 1-delta [cite: 152, 171]
-        mu, feasible = solve_optimization(
-            LfV, LgV, V, gamma, 
-            robust_clf_term=robust_clf_term, 
-            torque_A=A_tau, torque_b=b_tau, 
-            cbf_A=cbf_A, cbf_b=cbf_b
-        )
-
-        if feasible:
-            tau_cmd = (M @ J_pinv @ (u_ref + mu - (dJ @ self.dq))) + nle
-            #tau_cmd = (M @ J_pinv @ (u_ref + 0.0 - (dJ @ self.dq))) + nle
-        else:
-            tau_cmd = -10.0 * self.dq + nle # Fallback damping [cite: 406]
-
-        tau_cmd = np.clip(tau_cmd, -self.tau_limits, self.tau_limits)
-        msg = Float64MultiArray(data=tau_cmd.tolist()); self.pub.publish(msg)
-
-        # G. LOGGING
-        if len(self.log['t']) > 500:
-            for k in self.log: self.log[k].pop(0)
-        self.log['t'].append(t_clock)
-        self.log['x'].append(x_2d[0]); self.log['y'].append(x_2d[1])
-        self.log['xd'].append(xd[0]); self.log['yd'].append(xd[1])
-        self.log['h'].append(h_val)
-        self.log['mu'].append(np.linalg.norm(mu))
-
-    def stop_robot(self):
-        self.pub.publish(Float64MultiArray(data=[0.0]*2))
-
-def main(args=None):
-    rclpy.init(args=args)
-    node = GazeboConformalRobustNode()
-    
-    t_ros = threading.Thread(target=rclpy.spin, args=(node,), daemon=True)
-    t_ros.start()
-    
-    # --- PLOTTING SETUP ---
-    fig = plt.figure(figsize=(10, 8))
-    gs = fig.add_gridspec(2, 2, width_ratios=[1.5, 1])
-    ax_traj = fig.add_subplot(gs[:, 0]) 
-    ax_h = fig.add_subplot(gs[0, 1])    
-    ax_mu = fig.add_subplot(gs[1, 1])   
-    plt.subplots_adjust(bottom=0.15)
-    
-    ln_a, = ax_traj.plot([], [], 'r-', linewidth=2, label='Actual (Noisy Model)')
-    ln_t, = ax_traj.plot([], [], 'b--', linewidth=1, label='Target')
-    
-    # Visualize CR-Safe Set (Super-ellipsoid) [cite: 407, 540]
-    theta = np.linspace(0, 2*np.pi, 200)
-    rx, ry = node.cbf.radii[0], node.cbf.radii[1]
-    n  = node.cbf.power_n
-    x_b = rx * np.sign(np.cos(theta)) * (np.abs(np.cos(theta)) ** (2/n))
-    y_b = ry * np.sign(np.sin(theta)) * (np.abs(np.sin(theta)) ** (2/n))
-    ax_traj.plot(x_b, y_b, 'g-', label='Conformal Safe Set')
-    
-    ax_traj.set_xlim(-2.0, 2.0); ax_traj.set_ylim(-2.0, 2.0)
-    ax_traj.set_aspect('equal', adjustable='box'); ax_traj.grid(True); ax_traj.legend()
-
-    ln_h, = ax_h.plot([], [], 'g-'); ax_h.axhline(0, color='r', linestyle='--'); ax_h.set_title("Safety h(x)"); ax_h.grid(True)
-    ln_mu, = ax_mu.plot([], [], 'k-'); ax_mu.set_title("CR-Correction ||μ||"); ax_mu.grid(True)
-
-    ax_check = plt.axes([0.05, 0.02, 0.15, 0.05]) 
-    check = CheckButtons(ax_check, ['Activate CR-CBF'], [False])
-    def toggle(label): node.cbf_active = not node.cbf_active
-    check.on_clicked(toggle)
-
-    def update(frame):
-        if len(node.log['t']) == 0: return ln_a, ln_t, ln_h, ln_mu
-        t_d, x_d, y_d = list(node.log['t']), list(node.log['x']), list(node.log['y'])
-        xd_d, yd_d = list(node.log['xd']), list(node.log['yd'])
-        h_d, mu_d = list(node.log['h']), list(node.log['mu'])
-
-        ln_a.set_data(x_d, y_d); ln_t.set_data(xd_d, yd_d)
-        ln_h.set_data(t_d, h_d); ln_mu.set_data(t_d, mu_d)
+#         # --- 1. CONFORMAL PARAMETERS ---
+#         # Statistical quantile derived from prediction error rank statistics [cite: 9, 102]
+#         # This quantile q_{1-delta} quantifies model uncertainty [cite: 131, 139]
+#         self.q_quantile = 6000.0  # Example: Cartpole benchmark quantile [cite: 286]
         
-        if len(t_d) > 0:
-            ax_h.set_xlim(t_d[0], t_d[-1]); ax_mu.set_xlim(t_d[0], t_d[-1])
-            ax_h.set_ylim(-1.0, 1.0); ax_mu.set_ylim(-5.0, 25.0)
-        return ln_a, ln_t, ln_h, ln_mu
+#         # --- 2. CONTROLLER SETUP ---
+#         # Initialize internal model with NOISY URDF to represent data-driven uncertainty [cite: 128]
+#         self.robot_ctrl = RobotDynamics(URDF_NOISY, EE_NAMES, ALL_JOINTS, noise_level=0.0)
+#         self.traj_gen = TrajectoryGenerator() 
+#         self.clf_ctrl = RESCLF_Controller(dim_task=2) 
+        
+#         # Safety Barrier (CR-Barrier candidate) [cite: 10]
+#         self.cbf = CBF_SuperEllipsoid(
+#             center=[0.0, 0.0, 0.0], 
+#             lengths=[1.1, 1.1, 3.0], # Reduced margin for safety robustness
+#             power_n=4, k_pos=45.0, k_vel=30.0
+#         )
+#         self.cbf_active = False 
 
-    ani = FuncAnimation(fig, update, interval=50)
-    plt.show()
+#         # --- 3. ROS INTERFACE ---
+#         self.sub = self.create_subscription(JointState, '/joint_states', self.cb_joints, 10)
+#         self.pub = self.create_publisher(Float64MultiArray, '/arm_controller/commands', 10)
+#         self.timer = self.create_timer(0.01, self.control_loop) 
+        
+#         # --- 4. STATE ---
+#         self.start_time = None
+#         self.q = np.array([0.0, 0.1])
+#         self.dq = np.zeros(2)
+        
+#         # Torque limits remain high to allow the QP to find feasible solutions [cite: 602]
+#         self.tau_limits = np.array([20.0, 15.0]) 
+
+#         # --- 5. LOGGING ---
+#         self.log = {'t':[], 'x':[], 'y':[], 'xd':[], 'yd':[], 'h':[], 'mu':[]}
+
+#     def cb_joints(self, msg):
+#         q_buf, dq_buf = [0.0]*2, [0.0]*2
+#         found = 0
+#         for i, name in enumerate(ALL_JOINTS):
+#             if name in msg.name:
+#                 idx = msg.name.index(name)
+#                 q_buf[i] = msg.position[idx]
+#                 dq_buf[i] = msg.velocity[idx]
+#                 found += 1
+#         if found == 2:
+#             self.q, self.dq = np.array(q_buf), np.array(dq_buf)
+
+#     def control_loop(self):
+#         if self.start_time is None: self.start_time = time.time()
+#         t_clock = time.time() - self.start_time
+
+#         # A. DYNAMICS (Model learning-based [cite: 174])
+#         M, nle, J, dJ, x, dx = self.robot_ctrl.compute_dynamics(self.q, self.dq)
+#         J = J[0:2, :]; dJ = dJ[0:2, :]; x_2d = x[0:2]; dx_2d = dx[0:2]
+
+#         # B. TRAJECTORY [cite: 603]
+#         xd_f, vd_f, ad_f = self.traj_gen.get_ref(t_clock, current_actual_pos=np.pad(x_2d, (0,1)))
+#         xd, vd, ad = xd_f[:2], vd_f[:2], ad_f[:2]
+
+#         # C. CR-CLF (Conformally Robust Lyapunov Function) [cite: 143, 144]
+#         # robust_clf_term = ||dV/dx|| * q_{1-delta} [cite: 145]
+#         LfV, LgV, V, gamma, robust_clf_term = self.clf_ctrl.get_lyapunov_constraints(
+#             x_2d, dx_2d, xd, vd, q_quantile=self.q_quantile
+#         )
+
+#         # D. CR-CBF (Conformally Robust Barrier Function) [cite: 168, 169]
+#         cbf_A, cbf_b = None, None
+#         x_3d = np.array([x_2d[0], x_2d[1], 0.0])
+#         h_val = self.cbf.get_h_value(x_3d)
+
+#         if self.cbf_active:
+#             dx_3d = np.array([dx_2d[0], dx_2d[1], 0.0])
+#             u_nominal = self.clf_ctrl.get_nominal_acceleration(x_2d, dx_2d, xd, vd)
+#             u_ref_3d = np.array([ad[0]+u_nominal[0], ad[1]+u_nominal[1], 0.0])
+            
+#             # Penalizes safety margin by uncertainty: ||dh/dx|| * q_{1-delta} [cite: 170, 188]
+#             A_temp, b_temp = self.cbf.get_constraints(
+#                 x_3d, dx_3d, u_ref_3d, q_quantile=2.4
+#             )
+#             cbf_A = A_temp[:, :2] 
+#             cbf_b = b_temp
+
+#         # E. QP SETUP (Robustifying standard conditions [cite: 50])
+#         J_pinv = np.linalg.pinv(J)
+#         u_ref = ad + self.clf_ctrl.get_nominal_acceleration(x_2d, dx_2d, xd, vd)
+        
+#         drift_acc = u_ref - (dJ @ self.dq)
+#         b_tau_bias = (M @ J_pinv @ drift_acc) + nle
+#         A_tau_base = M @ J_pinv
+#         A_tau = np.vstack([A_tau_base, -A_tau_base])
+#         b_tau = np.hstack([self.tau_limits - b_tau_bias, self.tau_limits + b_tau_bias]).reshape(-1, 1)
+
+#         # F. SOLVE CR-QP [cite: 184, 249]
+#         # Incorporates robustness terms to guarantee safety/stability with probability >= 1-delta [cite: 152, 171]
+#         mu, feasible = solve_optimization(
+#             LfV, LgV, V, gamma, 
+#             robust_clf_term=robust_clf_term, 
+#             torque_A=A_tau, torque_b=b_tau, 
+#             cbf_A=cbf_A, cbf_b=cbf_b
+#         )
+
+#         if feasible:
+#             tau_cmd = (M @ J_pinv @ (u_ref + mu - (dJ @ self.dq))) + nle
+#             #tau_cmd = (M @ J_pinv @ (u_ref + 0.0 - (dJ @ self.dq))) + nle
+#         else:
+#             tau_cmd = -10.0 * self.dq + nle # Fallback damping [cite: 406]
+
+#         tau_cmd = np.clip(tau_cmd, -self.tau_limits, self.tau_limits)
+#         msg = Float64MultiArray(data=tau_cmd.tolist()); self.pub.publish(msg)
+
+#         # G. LOGGING
+#         if len(self.log['t']) > 500:
+#             for k in self.log: self.log[k].pop(0)
+#         self.log['t'].append(t_clock)
+#         self.log['x'].append(x_2d[0]); self.log['y'].append(x_2d[1])
+#         self.log['xd'].append(xd[0]); self.log['yd'].append(xd[1])
+#         self.log['h'].append(h_val)
+#         self.log['mu'].append(np.linalg.norm(mu))
+
+#     def stop_robot(self):
+#         self.pub.publish(Float64MultiArray(data=[0.0]*2))
+
+# def main(args=None):
+#     rclpy.init(args=args)
+#     node = GazeboConformalRobustNode()
     
-    node.stop_robot(); node.destroy_node(); rclpy.shutdown(); t_ros.join()
+#     t_ros = threading.Thread(target=rclpy.spin, args=(node,), daemon=True)
+#     t_ros.start()
+    
+#     # --- PLOTTING SETUP ---
+#     fig = plt.figure(figsize=(10, 8))
+#     gs = fig.add_gridspec(2, 2, width_ratios=[1.5, 1])
+#     ax_traj = fig.add_subplot(gs[:, 0]) 
+#     ax_h = fig.add_subplot(gs[0, 1])    
+#     ax_mu = fig.add_subplot(gs[1, 1])   
+#     plt.subplots_adjust(bottom=0.15)
+    
+#     ln_a, = ax_traj.plot([], [], 'r-', linewidth=2, label='Actual (Noisy Model)')
+#     ln_t, = ax_traj.plot([], [], 'b--', linewidth=1, label='Target')
+    
+#     # Visualize CR-Safe Set (Super-ellipsoid) [cite: 407, 540]
+#     theta = np.linspace(0, 2*np.pi, 200)
+#     rx, ry = node.cbf.radii[0], node.cbf.radii[1]
+#     n  = node.cbf.power_n
+#     x_b = rx * np.sign(np.cos(theta)) * (np.abs(np.cos(theta)) ** (2/n))
+#     y_b = ry * np.sign(np.sin(theta)) * (np.abs(np.sin(theta)) ** (2/n))
+#     ax_traj.plot(x_b, y_b, 'g-', label='Conformal Safe Set')
+    
+#     ax_traj.set_xlim(-2.0, 2.0); ax_traj.set_ylim(-2.0, 2.0)
+#     ax_traj.set_aspect('equal', adjustable='box'); ax_traj.grid(True); ax_traj.legend()
 
-if __name__ == '__main__':
-    main()
+#     ln_h, = ax_h.plot([], [], 'g-'); ax_h.axhline(0, color='r', linestyle='--'); ax_h.set_title("Safety h(x)"); ax_h.grid(True)
+#     ln_mu, = ax_mu.plot([], [], 'k-'); ax_mu.set_title("CR-Correction ||μ||"); ax_mu.grid(True)
+
+#     ax_check = plt.axes([0.05, 0.02, 0.15, 0.05]) 
+#     check = CheckButtons(ax_check, ['Activate CR-CBF'], [False])
+#     def toggle(label): node.cbf_active = not node.cbf_active
+#     check.on_clicked(toggle)
+
+#     def update(frame):
+#         if len(node.log['t']) == 0: return ln_a, ln_t, ln_h, ln_mu
+#         t_d, x_d, y_d = list(node.log['t']), list(node.log['x']), list(node.log['y'])
+#         xd_d, yd_d = list(node.log['xd']), list(node.log['yd'])
+#         h_d, mu_d = list(node.log['h']), list(node.log['mu'])
+
+#         ln_a.set_data(x_d, y_d); ln_t.set_data(xd_d, yd_d)
+#         ln_h.set_data(t_d, h_d); ln_mu.set_data(t_d, mu_d)
+        
+#         if len(t_d) > 0:
+#             ax_h.set_xlim(t_d[0], t_d[-1]); ax_mu.set_xlim(t_d[0], t_d[-1])
+#             ax_h.set_ylim(-1.0, 1.0); ax_mu.set_ylim(-5.0, 25.0)
+#         return ln_a, ln_t, ln_h, ln_mu
+
+#     ani = FuncAnimation(fig, update, interval=50)
+#     plt.show()
+    
+#     node.stop_robot(); node.destroy_node(); rclpy.shutdown(); t_ros.join()
+
+# if __name__ == '__main__':
+#     main()
 
 
 
