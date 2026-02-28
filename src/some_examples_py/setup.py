@@ -77,6 +77,7 @@ setup(
             'cr_7dof_main = some_examples_py.CRCLF_CRCBF_7_dof.main_node:main',
             'quantile_data_7_dof = some_examples_py.CRCLF_CRCBF_7_dof.quantile_data:run_pipeline',
             'calculate_quantile = some_examples_py.CRCLF_CRCBF_2_link.calculate_quantile:main',
+            'cr_main_2_dof = some_examples_py.CRCLF_CRCBF_2_link.Conformal_Pipeline.main_node:main',
         ],
     },
 )
