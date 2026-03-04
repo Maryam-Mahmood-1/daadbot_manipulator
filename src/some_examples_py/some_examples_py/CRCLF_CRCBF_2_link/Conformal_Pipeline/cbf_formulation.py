@@ -10,7 +10,7 @@ class CBF_SuperEllipsoid:
     Robust Constraint (Paper Eq 5 / Def 6):
         Reduces the available safety budget 'b' by the uncertainty margin.
     """
-    def __init__(self, center, lengths, power_n=4, k_pos=20.0, k_vel=10.0):
+    def __init__(self, center, lengths, power_n=4, k_pos=40.0, k_vel=30.0):
         self.center = np.array(center)
         self.radii = np.array(lengths)
         self.power_n = power_n 
