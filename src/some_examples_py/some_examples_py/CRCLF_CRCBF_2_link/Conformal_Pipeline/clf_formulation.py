@@ -11,9 +11,9 @@ class RESCLF_Controller:
         self.G = np.block([[zero], [eye]])
 
         # Tuned LQR Weights
-        q_pos, q_vel = 100.0, 20.0 
+        q_pos, q_vel = 300.0, 210.0 
         self.Q_mat = np.diag([q_pos]*dim_task + [q_vel]*dim_task)
-        R_mat = np.eye(dim_task) * 0.1 
+        R_mat = np.eye(dim_task) * 0.01 
         
         self.P = solve_continuous_are(self.F, self.G, self.Q_mat, R_mat)
         
@@ -25,7 +25,10 @@ class RESCLF_Controller:
 
     def get_nominal_acceleration(self, x, dx, x_des, dx_des):
         eta = np.hstack((x - x_des, dx - dx_des))
-        return -self.K @ eta 
+        print(f"State Error (eta): {eta}")
+        print(f"Optimal LQR Gain (K): {self.K}")
+        return -((self.K)/15) @ eta
+        # return -self.K @ eta 
 
     # [FIXED] u_nom is now correctly added to the signature
     def get_lyapunov_constraints(self, x, dx, x_des, dx_des, u_nom, q_quantile=0.0, J=None):
