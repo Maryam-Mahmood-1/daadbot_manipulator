@@ -80,6 +80,7 @@ setup(
             'cr_main_2_dof = some_examples_py.CRCLF_CRCBF_2_link.Conformal_Pipeline.main_node:main',
             'cr_pinocchio_main_2_dof = some_examples_py.CRCLF_CRCBF_2_link.Conformal_Pipeline.pinocchio_main:main',
             'compare_2_dof_models = some_examples_py.CRCLF_CRCBF_2_link.Conformal_Pipeline.compare_models_fbl_crclf:main',
+            'traj_sim_multi = some_examples_py.CRCLF_CRCBF_2_link.Conformal_Pipeline.traj_sim:main',
         ],
     },
 )
