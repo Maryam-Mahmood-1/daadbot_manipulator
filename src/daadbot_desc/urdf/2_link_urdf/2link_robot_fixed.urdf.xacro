@@ -1,11 +1,11 @@
 <?xml version='1.0' encoding='utf-8'?>
-<robot xmlns:ns0="http://www.ros.org/wiki/xacro" name="2link_robot">
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="2link_robot">
 
-    <ns0:arg name="is_sim" default="true" />
-    <ns0:arg name="is_ignition" default="true" />
+    <xacro:arg name="is_sim" default="true" />
+    <xacro:arg name="is_ignition" default="true" />
 
-    <ns0:include filename="$(find daadbot_desc)/urdf/2_link_urdf/2link_gazebo.xacro" />
-    <ns0:include filename="$(find daadbot_desc)/urdf/2_link_urdf/2link_ros2_control.xacro" />
+    <xacro:include filename="$(find daadbot_desc)/urdf/2_link_urdf/2link_gazebo.xacro" />
+    <xacro:include filename="$(find daadbot_desc)/urdf/2_link_urdf/2link_ros2_control.xacro" />
 
     <material name="black">
         <color rgba="0 0 0 0.7" />
