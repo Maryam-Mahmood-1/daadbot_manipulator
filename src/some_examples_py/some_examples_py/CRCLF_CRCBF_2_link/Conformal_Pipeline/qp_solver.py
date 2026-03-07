@@ -27,7 +27,7 @@ def solve_optimization(LfV, LgV, V, gamma, robust_clf_term=0.0, torque_A=None, t
     # ---------------------------------------------------------
     # 2. Setup Cost Function (P, q)
     # ---------------------------------------------------------
-    slack_penalty = 1.2  # Penalty for relaxing CLF constraint (Paper Eq 29)
+    slack_penalty = 0.75  # Penalty for relaxing CLF constraint (Paper Eq 29)
     P_diag = np.ones(num_vars)
     P_diag[-1] = slack_penalty
     

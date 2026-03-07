@@ -10,16 +10,16 @@ class RESCLF_Controller:
 
         # --- PID GAINS ---
         # Adjust these to change the responsiveness of the nominal controller
-        self.kp = 10.0
-        self.kd = 10.0
-        self.ki = 10.0
+        self.kp = 7.5
+        self.kd = 7.5
+        self.ki = 15.0
         self.error_integral = np.zeros(dim_task)
         
         # --- LYAPUNOV STABILITY BACKBONE ---
         # We keep P and gamma to define the 'Safety/Stability' boundary
         q_pos, q_vel = 300.0, 210.0 
         self.Q_mat = np.diag([q_pos]*dim_task + [q_vel]*dim_task)
-        self.R_mat = np.eye(dim_task) * 0.01 
+        self.R_mat = np.eye(dim_task) * 0.1 
         self.P = solve_continuous_are(self.F, self.G, self.Q_mat, self.R_mat)
         
         eig_Q = np.min(np.linalg.eigvals(self.Q_mat).real)
