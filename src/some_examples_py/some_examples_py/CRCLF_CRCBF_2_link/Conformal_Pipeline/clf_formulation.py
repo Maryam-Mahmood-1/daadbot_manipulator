@@ -48,5 +48,6 @@ class RESCLF_Controller:
             robustness_cost = np.linalg.norm(grad_V_actuated @ J) * q_quantile
         else:
             robustness_cost = np.linalg.norm(grad_V_actuated) * q_quantile
+        print(f"Gamma: {self.gamma}, LfV_closed: {LfV_closed}, Robustness Cost: {robustness_cost}")
             
         return LfV_closed, LgV, V, self.gamma, robustness_cost
