@@ -82,6 +82,8 @@ setup(
             'compare_2_dof_models = some_examples_py.CRCLF_CRCBF_2_link.Conformal_Pipeline.compare_models_fbl_crclf:main',
             'traj_sim_multi = some_examples_py.CRCLF_CRCBF_2_link.Conformal_Pipeline.traj_sim:main',
             'task_space_stab_main = some_examples_py.CRCLF_CRCBF_2_link.Conformal_Pipeline.task_space_main:main',
+            'task_space_stab_pin = some_examples_py.CRCLF_CRCBF_2_link.Conformal_Pipeline.task_space_pinocchio:main',
+            'task_space_traj_multi = some_examples_py.CRCLF_CRCBF_2_link.Conformal_Pipeline.traj_sim:main',
         ],
     },
 )

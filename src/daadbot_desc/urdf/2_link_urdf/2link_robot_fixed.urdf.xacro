@@ -53,7 +53,7 @@
 
     <joint name="baseHinge" type="revolute">
         <axis rpy="0 0 0" xyz="0 0 1" />
-        <limit effort="50.0" velocity="1.0" lower="-1000.0" upper="1000.0" />
+        <limit effort="50.0" velocity="0.5" lower="-1000.0" upper="1000.0" />
         <parent link="base" />
         <child link="arm1" />
     <origin rpy="0 0 0.5772411021609789" xyz="0 0 0" /></joint>
@@ -81,7 +81,7 @@
 
     <joint name="interArm" type="revolute">
         <axis rpy="0 0 0" xyz="0 0 1" />
-        <limit effort="30.0" velocity="1.0" lower="-1000.0" upper="1000.0" />
+        <limit effort="30.0" velocity="0.5" lower="-1000.0" upper="1000.0" />
         <parent link="arm1" />
         <child link="arm2" />
         <origin rpy="0 0 -1.0307324155578172" xyz="0.75 0 0" />

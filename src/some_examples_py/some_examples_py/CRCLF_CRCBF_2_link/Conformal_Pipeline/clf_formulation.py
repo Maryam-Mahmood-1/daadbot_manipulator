@@ -38,7 +38,7 @@ class RESCLF_Controller:
         # 3. PID Law: u = Kp*e + Kd*edot + Ki*e_int
         u_pid = (self.kp * error_pos) + (self.kd * error_vel) + (self.ki * self.error_integral)
         
-        print(f"PID Effort: {u_pid}")
+        # print(f"PID Effort: {u_pid}")
         return u_pid
 
     def get_lyapunov_constraints(self, x, dx, x_des, dx_des, u_nom, q_quantile=0.0, J=None):
