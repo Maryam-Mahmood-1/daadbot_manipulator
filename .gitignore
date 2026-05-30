@@ -10,3 +10,7 @@
 
 # Keep .gitignore
 !.gitignore
+
+# Generated Python cache files
+__pycache__/
+*.pyc
