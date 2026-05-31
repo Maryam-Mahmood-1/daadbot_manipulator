@@ -13,7 +13,6 @@
   <exec_depend>daadbot_controller</exec_depend>
   <exec_depend>daadbot_desc</exec_depend>
   <exec_depend>daadbot_moveit</exec_depend>
-  <exec_depend>daadbot_posegen</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
