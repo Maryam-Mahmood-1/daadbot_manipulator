@@ -1,16 +1,9 @@
-# Ignore everything
-*
+# ROS 2 workspace build outputs
+build/
+install/
+log/
 
-# Include all files inside src/
-!/src
-!/src/**
-
-# Include specific file at repo root
-!/MyCommands2.odt
-
-# Keep .gitignore
-!.gitignore
-
-# Generated Python cache files
+# Local editor/cache files
+.vscode/
 __pycache__/
 *.pyc
