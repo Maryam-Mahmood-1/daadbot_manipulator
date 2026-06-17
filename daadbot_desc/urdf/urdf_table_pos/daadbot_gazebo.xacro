@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="daadbot">
+    <gazebo>
+        <xacro:if value="$(arg is_ignition)">
+            <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+                <parameters>$(find daadbot_controller)/config/pos_trajectory_controller.yaml</parameters>
+            </plugin>
+            <plugin
+                filename="ignition-gazebo-forcetorque-system"
+                name="ignition::gazebo::systems::ForceTorque">
+            </plugin>
+            
+        </xacro:if>
+        <xacro:unless value="$(arg is_ignition)">
+            <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+                <parameters>$(find daadbot_controller)/config/pos_trajectory_controller.yaml</parameters>
+            </plugin>
+            <plugin
+                filename="gz-sim-forcetorque-system"
+                name="gz::sim::systems::ForceTorque">
+            </plugin>
+            
+        </xacro:unless>
+    </gazebo>
+
+</robot>
