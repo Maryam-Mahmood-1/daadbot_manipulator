@@ -234,8 +234,3 @@ Interfaces in `daadbot_msgs` are released under the **MIT** license; `some_examp
 
 ---
 
-## Contact
-
-**Maryam Mahmood** — School of Electrical Engineering & Computer Science (SEECS), NUST
-📧 mmahmood.msee23seecs@seecs.edu.pk
-🔗 https://github.com/Maryam-Mahmood-1
