@@ -42,6 +42,8 @@ setup(
             'sim_driver = some_examples_py.demos.sim_driver:main',
             'tf_visualizer = some_examples_py.demos.tf_visualizer:main',
             'ctc_controller = some_examples_py.demos.ctc_controller:main',
+            'ctc_controller_j6m90 = some_examples_py.demos.ctc_controller_j6m90:main',
+            'j6m90_joint_diagnostics = some_examples_py.demos.j6m90_joint_diagnostics:main',
             'ctc_gui_ros = some_examples_py.demos.ctc_gui_ros:main',
         ],
     },
