@@ -64,14 +64,14 @@ def generate_launch_description():
 
     # 6. Trajectory Visualizer Node (The Red Curve)
     traj_viz_node = Node(
-        package='some_examples_py', 
+        package='daadbot_clf_cbf', 
         executable='trajectory_visualizer',
         name='trajectory_visualizer'
     )
 
     # 7. Safety Visualizer Node (The Green Box) <--- ADDED THIS
     safety_viz_node = Node(
-        package='some_examples_py', 
+        package='daadbot_clf_cbf', 
         executable='safety_visualizer',
         name='safety_visualizer'
     )
