@@ -107,6 +107,58 @@ def make_kdof_urdf(template_root, arm, k):
     return root, [name for idx, name in arm if idx <= k]
 
 
+def make_kdof_urdf_truncate(template_root, arm, k, full_dof):
+    """Deep-copy and PHYSICALLY truncate the chain to k actuated arm joints:
+    delete joint_{k+1}..joint_N, every link below Link_k (next links,
+    end-effector, gripper) and the matching tcp_fts sensor frames + gazebo
+    reference blocks. base_link counts as 'link 1', so k DOF keeps Link_1..Link_k.
+    """
+    import copy
+    from collections import defaultdict, deque
+    root = copy.deepcopy(template_root)
+    keep_arm = {name for idx, name in arm if idx <= k}
+
+    # joints to cut: arm joints beyond k and their force-torque sensor joints
+    cut = {name for idx, name in arm if idx > k}
+    cut |= {f'tcp_fts_joint_{m}' for m in range(k + 1, full_dof + 1)}
+
+    # reachability from the root link, not crossing cut joints
+    adj = defaultdict(list)
+    for j in root.findall('joint'):
+        if j.get('name') not in cut:
+            adj[j.find('parent').get('link')].append(j.find('child').get('link'))
+    all_links = {l.get('name') for l in root.findall('link')}
+    children = {j.find('child').get('link') for j in root.findall('joint')}
+    reachable, dq = set(), deque(all_links - children)
+    while dq:
+        lk = dq.popleft()
+        if lk in reachable:
+            continue
+        reachable.add(lk)
+        dq.extend(adj[lk])
+
+    # drop links/joints outside the kept subtree
+    for l in list(root.findall('link')):
+        if l.get('name') not in reachable:
+            root.remove(l)
+    for j in list(root.findall('joint')):
+        if j.get('name') in cut or j.find('child').get('link') not in reachable:
+            root.remove(j)
+
+    # drop dangling per-link/per-joint <gazebo reference="..."> blocks
+    removed = (all_links - reachable) | cut
+    for g in list(root.findall('gazebo')):
+        if g.get('reference') in removed:
+            root.remove(g)
+
+    # trim ros2_control to the kept arm joints
+    rc = root.find('ros2_control')
+    for j in list(rc.findall('joint')):
+        if j.get('name') not in keep_arm:
+            rc.remove(j)
+    return root, [name for idx, name in arm if idx <= k]
+
+
 def write_urdf(root, path):
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -314,6 +366,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--urdf', required=True, help='flat URDF with embedded ros2_control + gazebo')
+    ap.add_argument('--mode', choices=('lock', 'truncate', 'both'), default='lock',
+                    help='lock = keep full geometry, fix distal joints; '
+                         'truncate = delete distal links/joints (suffix _trunc); '
+                         'both = generate each in its own files')
     ap.add_argument('--dofs', type=int, nargs='+', default=[2, 3, 4, 5, 6])
     ap.add_argument('--name', default=None,
                     help='tag for output names (default: urdf folder name minus leading "urdf_")')
@@ -348,43 +404,52 @@ def main():
     print(f'gazebo references yaml: {old_yaml}')
     print(f'tag: {tag}\n')
 
+    modes = {'lock': ('', make_kdof_urdf),
+             'truncate': ('_trunc', None)}  # truncate handled specially (needs full_dof)
+    selected = ['lock', 'truncate'] if args.mode == 'both' else [args.mode]
+
     for k in args.dofs:
         if not (1 <= k < full_dof):
             print(f'skip {k}dof (must be 1..{full_dof - 1})')
             continue
-        urdf_folder = f'urdf_{tag}_{k}dof'
-        yaml_name = f'command_controller_{tag}_{k}dof.yaml'
-        ctrl_launch_name = f'controller_{tag}_{k}dof.launch.py'
-        gz_launch_name = f'gazebo_{tag}_{k}dof.launch.py'
-        bringup_name = f'sim_robot_{tag}_{k}dof.launch.py'
-
-        root_k, kept = make_kdof_urdf(template_root, arm, k)
-
-        targets = {
-            desc / 'urdf' / urdf_folder / 'daadbot.urdf': ('urdf', root_k),
-            controller / 'config' / yaml_name:
-                ('text', controller_yaml(arm_ctrl, ctrl_type, kept)),
-            controller / 'launch' / ctrl_launch_name:
-                ('text', controller_launch(arm_ctrl)),
-            desc / 'launch' / gz_launch_name:
-                ('text', gazebo_launch(urdf_folder, old_yaml, yaml_name)),
-            bringup / 'launch' / bringup_name:
-                ('text', bringup_launch(gz_launch_name, ctrl_launch_name)),
-        }
-
-        print(f'[{k}dof] joints={kept}')
-        for path, (kind, payload) in targets.items():
-            rel = path.relative_to(desc.parent)
-            if args.dry_run:
-                print(f'    would write {rel}')
-                continue
-            if kind == 'urdf':
-                write_urdf(payload, path)
+        for mode in selected:
+            suffix = modes[mode][0]
+            if mode == 'lock':
+                root_k, kept = make_kdof_urdf(template_root, arm, k)
             else:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(payload)
-            print(f'    wrote {rel}')
-        print(f'    -> ros2 launch daadbot_bringup {bringup_name}\n')
+                root_k, kept = make_kdof_urdf_truncate(template_root, arm, k, full_dof)
+
+            urdf_folder = f'urdf_{tag}_{k}dof{suffix}'
+            yaml_name = f'command_controller_{tag}_{k}dof{suffix}.yaml'
+            ctrl_launch_name = f'controller_{tag}_{k}dof{suffix}.launch.py'
+            gz_launch_name = f'gazebo_{tag}_{k}dof{suffix}.launch.py'
+            bringup_name = f'sim_robot_{tag}_{k}dof{suffix}.launch.py'
+
+            targets = {
+                desc / 'urdf' / urdf_folder / 'daadbot.urdf': ('urdf', root_k),
+                controller / 'config' / yaml_name:
+                    ('text', controller_yaml(arm_ctrl, ctrl_type, kept)),
+                controller / 'launch' / ctrl_launch_name:
+                    ('text', controller_launch(arm_ctrl)),
+                desc / 'launch' / gz_launch_name:
+                    ('text', gazebo_launch(urdf_folder, old_yaml, yaml_name)),
+                bringup / 'launch' / bringup_name:
+                    ('text', bringup_launch(gz_launch_name, ctrl_launch_name)),
+            }
+
+            print(f'[{k}dof {mode}] joints={kept}')
+            for path, (kind, payload) in targets.items():
+                rel = path.relative_to(desc.parent)
+                if args.dry_run:
+                    print(f'    would write {rel}')
+                    continue
+                if kind == 'urdf':
+                    write_urdf(payload, path)
+                else:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(payload)
+                print(f'    wrote {rel}')
+            print(f'    -> ros2 launch daadbot_bringup {bringup_name}\n')
 
     if not args.dry_run:
         print('Done. Rebuild to install:  colcon build --packages-select '
