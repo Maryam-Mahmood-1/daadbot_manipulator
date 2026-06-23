@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- SRDF for the urdf_table_pos_j6m90 model (joint_6 rebaked -90deg).
+     Home is all-zeros: the old 1.75 / -1.57 home is out of the j6m90 limits
+     (e.g. joint_2 in [-3.491, 0.524], joint_6 in [0, 3.142]). -->
+<robot name="daadbot">
+
+    <group name="arm">
+        <joint name="table_joint"/>
+
+        <joint name="base_joint"/>
+
+        <joint name="joint_1"/>
+        <joint name="joint_2"/>
+        <joint name="joint_3"/>
+        <joint name="joint_4"/>
+        <joint name="joint_5"/>
+        <joint name="joint_6"/>
+        <joint name="joint_7"/>
+
+        <joint name="endeffector_joint"/>
+
+    </group>
+
+    <group name="gripper">
+
+        <joint name="gear1_joint"/>
+        <joint name="base_claw_joint1"/>
+        <joint name="claw_joint1"/>
+        <joint name="gear2_joint"/>
+        <joint name="base_claw_joint2"/>
+        <joint name="claw_joint2"/>
+
+    </group>
+
+    <group_state name="home" group="arm">
+
+        <joint name="joint_1" value="0"/>
+        <joint name="joint_2" value="0"/>
+        <joint name="joint_3" value="0"/>
+        <joint name="joint_4" value="0"/>
+        <joint name="joint_5" value="0"/>
+        <joint name="joint_6" value="0"/>
+        <joint name="joint_7" value="0"/>
+
+    </group_state>
+
+
+    <group_state name="home" group="gripper">
+
+        <joint name="gear1_joint" value="0"/>
+
+    </group_state>
+
+
+    <disable_collisions link1="base_link" link2="Link_1" reason="Adjacent"/>
+    <disable_collisions link1="Link_1" link2="Link_2" reason="Adjacent"/>
+    <disable_collisions link1="Link_2" link2="Link_3" reason="Adjacent"/>
+    <disable_collisions link1="Link_3" link2="Link_4" reason="Adjacent"/>
+    <disable_collisions link1="Link_4" link2="Link_5" reason="Adjacent"/>
+    <disable_collisions link1="Link_5" link2="Link_6" reason="Adjacent"/>
+    <disable_collisions link1="Link_6" link2="Link_7" reason="Adjacent"/>
+
+
+    <disable_collisions link1="Link_7" link2="endeffector" reason="Adjacent"/>
+    <disable_collisions link1="Link_7" link2="base_claw_link1" reason="Adjacent"/>
+    <disable_collisions link1="Link_7" link2="base_claw_link2" reason="Adjacent"/>
+    <disable_collisions link1="endeffector" link2="gear1" reason="Adjacent"/>
+    <disable_collisions link1="endeffector" link2="gear2_link" reason="Adjacent"/>
+    <disable_collisions link1="gear1" link2="gear1_claw" reason="Adjacent"/>
+    <disable_collisions link1="gear2_link" link2="gear2_claw" reason="Adjacent"/>
+
+    <disable_collisions link1="base_claw_link1" link2="gear1_claw" reason="Adjacent"/>
+    <disable_collisions link1="base_claw_link2" link2="gear2_claw" reason="Adjacent"/>
+
+</robot>

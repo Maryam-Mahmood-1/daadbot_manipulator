@@ -97,6 +97,15 @@ ament_target_dependencies(reachability_ws
   visualization_msgs
 )
 
+add_executable(reachability_map src/reachability_map.cpp)
+ament_target_dependencies(reachability_map
+  rclcpp
+  moveit_ros_planning
+  moveit_core
+  geometry_msgs
+  visualization_msgs
+)
+
 # Install C++ executables
 install(TARGETS
   simple_publisher
@@ -112,6 +121,7 @@ install(TARGETS
   executor_pick_place_2
   can_driver
   reachability_ws
+  reachability_map
   DESTINATION lib/${PROJECT_NAME}
 )
 

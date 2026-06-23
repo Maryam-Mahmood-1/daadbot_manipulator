@@ -13,8 +13,8 @@
     </hardware>
     <joint name="joint_1">
       <command_interface name="position">
-        <param name="min">-3.14159</param>
-        <param name="max">3.14159</param>
+        <param name="min">-0.1</param>
+        <param name="max">3.2</param>
       </command_interface>
       <state_interface name="position" />
       <state_interface name="velocity" />
@@ -22,8 +22,8 @@
     </joint>
     <joint name="joint_2">
       <command_interface name="position">
-        <param name="min">-3.14159</param>
-        <param name="max">3.14159</param>
+        <param name="min">-3.307</param>
+        <param name="max">0.5236</param>
       </command_interface>
       <state_interface name="position" />
       <state_interface name="velocity" />
@@ -31,8 +31,8 @@
     </joint>
     <joint name="joint_3">
       <command_interface name="position">
-        <param name="min">-3.14159</param>
-        <param name="max">3.14159</param>
+        <param name="min">-0.1</param>
+        <param name="max">3.2</param>
       </command_interface>
       <state_interface name="position" />
       <state_interface name="velocity" />
@@ -40,8 +40,8 @@
     </joint>
     <joint name="joint_4">
       <command_interface name="position">
-        <param name="min">-3.14159</param>
-        <param name="max">3.14159</param>
+        <param name="min">-1.9199</param>
+        <param name="max">1.9199</param>
       </command_interface>
       <state_interface name="position" />
       <state_interface name="velocity" />
@@ -49,8 +49,8 @@
     </joint>
     <joint name="joint_5">
       <command_interface name="position">
-        <param name="min">-3.14159</param>
-        <param name="max">3.14159</param>
+        <param name="min">-0.1</param>
+        <param name="max">3.4</param>
       </command_interface>
       <state_interface name="position" />
       <state_interface name="velocity" />
@@ -58,8 +58,8 @@
     </joint>
     <joint name="joint_6">
       <command_interface name="position">
-        <param name="min">-3.14159</param>
-        <param name="max">3.14159</param>
+        <param name="min">-3.673205e-06</param>
+        <param name="max">3.141596326795</param>
       </command_interface>
       <state_interface name="position" />
       <state_interface name="velocity" />
@@ -333,7 +333,7 @@
     <parent link="Link_1" />
     <child link="Link_2" />
     <axis xyz="0 0 -1" />
-    <limit effort="200.0" lower="-3.4907" upper="0.5236" velocity="12.776" />
+    <limit effort="200.0" lower="-3.307" upper="0.5236" velocity="12.776" />
     <sensor name="force_torque" type="force_torque">
       <update_rate>30</update_rate>
     </sensor>
